@@ -1,24 +1,26 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { AdminLog } from '@/types';
+
+// Mock data untuk admin logs
+const mockAdminLogs: AdminLog[] = [
+  {
+    id: '1',
+    admin_id: 'admin-1',
+    action: 'Product created',
+    target_type: 'product',
+    target_id: 'prod-1',
+    details: {},
+    created_at: new Date().toISOString()
+  }
+];
 
 export const useAdminLogs = () => {
   return useQuery({
     queryKey: ['admin-logs'],
     queryFn: async (): Promise<AdminLog[]> => {
-      const { data, error } = await supabase
-        .from('admin_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) {
-        console.error('Error fetching admin logs:', error);
-        throw error;
-      }
-
-      return data || [];
+      // Return mock data instead of Supabase query
+      return mockAdminLogs;
     },
   });
 };
@@ -33,14 +35,9 @@ export const useLogAdminAction = () => {
       target_id?: string;
       details?: any;
     }) => {
-      const { error } = await supabase
-        .from('admin_logs')
-        .insert([{
-          admin_id: (await supabase.auth.getUser()).data.user?.id,
-          ...logData
-        }]);
-
-      if (error) throw error;
+      // Mock implementation - in real app this would log to your preferred system
+      console.log('Admin action logged:', logData);
+      return Promise.resolve();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-logs'] });

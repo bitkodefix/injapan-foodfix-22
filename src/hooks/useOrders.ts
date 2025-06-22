@@ -1,39 +1,15 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Order, CartItem } from '@/types';
+
+// Mock orders data
+const mockOrders: Order[] = [];
 
 export const useOrders = () => {
   return useQuery({
     queryKey: ['orders'],
     queryFn: async (): Promise<Order[]> => {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching orders:', error);
-        throw error;
-      }
-
-      return data?.map(order => ({
-        ...order,
-        items: (order.items as any[]).map(item => ({
-          ...item,
-          product: item.product || {
-            id: item.id || '',
-            name: item.name || '',
-            price: item.price || 0,
-            image_url: item.image_url || '',
-            category: '',
-            description: '',
-            stock: 0
-          }
-        })) as CartItem[],
-        customer_info: order.customer_info as Order['customer_info'],
-        status: order.status as Order['status']
-      })) || [];
+      return mockOrders;
     },
   });
 };
@@ -53,24 +29,20 @@ export const useCreateOrder = () => {
       customerInfo: any;
       userId?: string;
     }) => {
-      const { data, error } = await supabase
-        .from('orders')
-        .insert({
-          user_id: userId || null,
-          total_price: totalPrice,
-          customer_info: customerInfo,
-          items: items as any,
-          status: 'pending'
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error creating order:', error);
-        throw error;
-      }
-
-      return data;
+      // Mock order creation - in real app this would save to your preferred database
+      const newOrder = {
+        id: Date.now().toString(),
+        user_id: userId || null,
+        total_price: totalPrice,
+        customer_info: customerInfo,
+        items: items,
+        status: 'pending' as const,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      mockOrders.push(newOrder);
+      return newOrder;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
