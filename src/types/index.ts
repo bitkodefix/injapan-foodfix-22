@@ -1,3 +1,4 @@
+
 export interface Product {
   id: string;
   name: string;
@@ -8,12 +9,16 @@ export interface Product {
   images?: string[];
   variants?: ProductVariant[];
   stock: number;
-  status?: 'active' | 'inactive' | 'draft';
+  status?: 'active' | 'inactive' | 'draft' | 'out_of_stock';
   created_at?: string;
   updated_at?: string;
+  // Additional properties for cart functionality
+  selectedVariantName?: string;
+  selectedVariants?: Record<string, any>;
 }
 
 export interface ProductVariant {
+  id?: string;
   name: string;
   price: number;
   stock: number;
@@ -25,11 +30,14 @@ export interface Order {
   user_id: string;
   items: OrderItem[];
   total_amount: number;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  total_price: number; // Alternative property name used in some components
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'confirmed' | 'completed';
   shipping_address: ShippingAddress;
   payment_method: 'credit_card' | 'paypal' | 'cod';
   created_at: string;
   updated_at: string;
+  customer_info?: CustomerInfo;
+  referralTransaction?: any;
 }
 
 export interface OrderItem {
@@ -38,6 +46,18 @@ export interface OrderItem {
   price: number;
   name: string;
   image_url: string;
+  selectedVariants?: Record<string, any>;
+}
+
+export interface CustomerInfo {
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  prefecture?: string;
+  postal_code?: string;
+  city?: string;
+  notes?: string;
 }
 
 export interface ShippingAddress {
@@ -63,6 +83,7 @@ export interface User {
 export interface AdminLog {
   id: string;
   user_id: string;
+  admin_id?: string; // Alternative property name
   action: string;
   target_type: string;
   target_id: string;
@@ -82,4 +103,44 @@ export interface RecycleBinItem {
   original_id: string;
   data: Product;
   deleted_at: string;
+}
+
+// Missing CartItem interface
+export interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image_url: string;
+  product: Product;
+  selectedVariants?: Record<string, any>;
+  selectedVariantName?: string | null;
+}
+
+// Missing DashboardStats interface
+export interface DashboardStats {
+  totalProducts: number;
+  activeProducts: number;
+  outOfStockProducts: number;
+  lowStockProducts: Product[];
+  totalOrders: number;
+  criticalStockProducts: Product[];
+  totalCategories: number;
+  pendingOrders: number;
+  totalRevenue: number;
+}
+
+// Missing Prefecture interface
+export interface Prefecture {
+  name: string;
+  name_en: string;
+}
+
+// Missing OrderTracking interface
+export interface OrderTracking {
+  id: string;
+  order_id: string;
+  status: string;
+  timestamp: string;
+  notes?: string;
 }
