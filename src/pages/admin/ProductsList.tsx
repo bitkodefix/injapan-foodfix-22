@@ -1,7 +1,6 @@
-
 import { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
-import { useMoveToRecycleBin } from '@/hooks/useRecycleBin';
+import { deleteProduct } from '@/services/productService';
 import { toast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,7 +24,6 @@ import AdminLayout from '@/components/admin/AdminLayout';
 
 const ProductsList = () => {
   const { data: products = [], refetch, isLoading } = useProducts();
-  const moveToRecycleBin = useMoveToRecycleBin();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [deletingProducts, setDeletingProducts] = useState<Set<string>>(new Set());
@@ -43,24 +41,20 @@ const ProductsList = () => {
     setDeletingProducts(prev => new Set(prev).add(product.id));
 
     try {
-      await moveToRecycleBin.mutateAsync({
-        table: 'products',
-        itemId: product.id,
-        itemData: product
-      });
+      await deleteProduct(product.id);
 
       toast({
         title: "Berhasil",
-        description: "Produk telah dipindahkan ke Recycle Bin",
+        description: "Produk telah dihapus permanent",
       });
 
       await refetch();
       
     } catch (error) {
-      console.error('Error moving product to recycle bin:', error);
+      console.error('Error deleting product:', error);
       toast({
         title: "Terjadi Kesalahan",
-        description: "Gagal memindahkan produk ke Recycle Bin",
+        description: "Gagal menghapus produk",
         variant: "destructive"
       });
     } finally {
@@ -196,8 +190,8 @@ const ProductsList = () => {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Konfirmasi Penghapusan Produk</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Produk "<strong>{product.name}</strong>" akan dipindahkan ke Recycle Bin dan dapat dipulihkan sewaktu-waktu. 
-                            Tindakan ini dapat dibatalkan melalui menu Recycle Bin.
+                            Produk "<strong>{product.name}</strong>" akan dihapus secara permanen dari database. 
+                            Tindakan ini tidak dapat dibatalkan.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -206,7 +200,7 @@ const ProductsList = () => {
                             onClick={() => handleDeleteProduct(product)}
                             className="bg-red-600 hover:bg-red-700"
                           >
-                            Hapus Produk
+                            Hapus Permanen
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
