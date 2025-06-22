@@ -1,3 +1,4 @@
+
 import { 
   collection, 
   getDocs, 
@@ -16,7 +17,7 @@ import {
   getDownloadURL,
   deleteObject
 } from 'firebase/storage';
-import { db, storage } from '@/config/firebase';
+import { db, storage, auth } from '@/config/firebase';
 import { Product, RecycleBinItem } from '@/types';
 
 const PRODUCTS_COLLECTION = 'products';
@@ -135,6 +136,11 @@ export const uploadProductImages = async (files: File[]): Promise<string[]> => {
 export const addProduct = async (product: Omit<Product, 'id'>) => {
   try {
     console.log('Adding product to Firestore:', product);
+    console.log('Current user:', auth.currentUser?.uid);
+    
+    if (!auth.currentUser) {
+      throw new Error('User not authenticated');
+    }
     
     const productsRef = collection(db, PRODUCTS_COLLECTION);
     const docRef = await addDoc(productsRef, {
@@ -160,6 +166,10 @@ export const addProduct = async (product: Omit<Product, 'id'>) => {
 
 export const updateProduct = async (id: string, updates: Partial<Product>) => {
   try {
+    if (!auth.currentUser) {
+      throw new Error('User not authenticated');
+    }
+    
     const productRef = doc(db, PRODUCTS_COLLECTION, id);
     await updateDoc(productRef, {
       ...updates,
@@ -174,6 +184,11 @@ export const updateProduct = async (id: string, updates: Partial<Product>) => {
 export const moveProductToRecycleBin = async (product: Product) => {
   try {
     console.log('Moving product to recycle bin:', product.id);
+    console.log('Current user:', auth.currentUser?.uid);
+    
+    if (!auth.currentUser) {
+      throw new Error('User not authenticated');
+    }
     
     // Add to recycle bin collection
     const recycleBinRef = collection(db, RECYCLE_BIN_COLLECTION);
@@ -197,6 +212,10 @@ export const moveProductToRecycleBin = async (product: Product) => {
 
 export const getRecycleBinItems = async (): Promise<RecycleBinItem[]> => {
   try {
+    if (!auth.currentUser) {
+      throw new Error('User not authenticated');
+    }
+    
     const recycleBinRef = collection(db, RECYCLE_BIN_COLLECTION);
     const q = query(recycleBinRef, orderBy('deleted_at', 'desc'));
     const snapshot = await getDocs(q);
@@ -217,6 +236,11 @@ export const getRecycleBinItems = async (): Promise<RecycleBinItem[]> => {
 export const restoreFromRecycleBin = async (recycleBinItem: any) => {
   try {
     console.log('Restoring item from recycle bin:', recycleBinItem.id);
+    console.log('Current user:', auth.currentUser?.uid);
+    
+    if (!auth.currentUser) {
+      throw new Error('User not authenticated');
+    }
     
     // Add back to original collection
     if (recycleBinItem.original_table === 'products') {
