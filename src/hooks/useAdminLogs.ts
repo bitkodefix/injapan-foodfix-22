@@ -6,6 +6,7 @@ import { AdminLog } from '@/types';
 const mockAdminLogs: AdminLog[] = [
   {
     id: '1',
+    user_id: 'user-1', // Fixed: added required user_id
     admin_id: 'admin-1',
     action: 'Product created',
     target_type: 'product',

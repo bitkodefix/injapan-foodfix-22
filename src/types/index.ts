@@ -143,4 +143,11 @@ export interface OrderTracking {
   status: string;
   timestamp: string;
   notes?: string;
+  // Additional properties used in export utils
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  total_amount?: number;
+  items?: any[];
+  created_at?: string;
 }
