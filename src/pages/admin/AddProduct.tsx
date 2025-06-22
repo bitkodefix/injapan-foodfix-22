@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useFirebaseAuth';
 import { toast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import ProductVariants from '@/components/admin/ProductVariants';
 
 const AddProduct = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -137,7 +139,15 @@ const AddProduct = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('Submitting form with data:', formData);
+    console.log('=== FORM SUBMISSION START ===');
+    console.log('Current user:', user);
+    console.log('Form data:', formData);
+    console.log('Environment:', {
+      hostname: window.location.hostname,
+      isVercel: window.location.hostname.includes('vercel.app'),
+      isLovable: window.location.hostname.includes('lovable.app'),
+      isLocalhost: window.location.hostname === 'localhost'
+    });
     
     if (!formData.name || !formData.price || !formData.category || !formData.stock) {
       toast({
@@ -170,6 +180,16 @@ const AddProduct = () => {
       return;
     }
 
+    if (!user) {
+      console.error('No authenticated user found');
+      toast({
+        title: "Error",
+        description: "Anda harus login terlebih dahulu",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -181,33 +201,36 @@ const AddProduct = () => {
         console.log('Image upload result:', imageUrl);
       }
 
-      console.log('Inserting product with data:', {
+      const productData = {
         name: formData.name,
         description: formData.description,
         price: priceNum,
         category: formData.category,
         stock: stockNum,
-        image_url: imageUrl || '/placeholder.svg'
-      });
+        image_url: imageUrl || '/placeholder.svg',
+        variants: variants || []
+      };
 
-      // Insert product
-      const { error } = await supabase
+      console.log('Inserting product with data:', productData);
+      console.log('Authenticated user UID:', user.uid);
+
+      // Insert product with explicit logging
+      const { data: insertedData, error } = await supabase
         .from('products')
-        .insert([{
-          name: formData.name,
-          description: formData.description,
-          price: priceNum,
-          category: formData.category,
-          stock: stockNum,
-          image_url: imageUrl || '/placeholder.svg'
-        }]);
+        .insert([productData])
+        .select();
 
       if (error) {
-        console.error('Database insert error:', error);
+        console.error('=== SUPABASE INSERT ERROR ===');
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error.details);
+        console.error('Error hint:', error.hint);
         throw error;
       }
 
-      console.log('Product inserted successfully');
+      console.log('=== INSERT SUCCESS ===');
+      console.log('Inserted data:', insertedData);
 
       toast({
         title: "Berhasil!",
@@ -216,12 +239,14 @@ const AddProduct = () => {
 
       navigate('/admin/products');
     } catch (error) {
-      console.error('Error adding product:', error);
+      console.error('=== PRODUCT ADDITION ERROR ===');
+      console.error('Error object:', error);
       
       let errorMessage = "Gagal menambahkan produk";
       if (error instanceof Error) {
+        console.error('Error message:', error.message);
         if (error.message.includes('storage') || error.message.includes('violates row-level security')) {
-          errorMessage = "Gagal mengupload gambar. Silakan coba lagi";
+          errorMessage = "Masalah dengan izin akses. Pastikan Anda sudah login sebagai admin.";
         } else if (error.message.includes('duplicate')) {
           errorMessage = "Produk dengan nama yang sama sudah ada";
         } else if (error.message.includes('authentication')) {
@@ -252,6 +277,11 @@ const AddProduct = () => {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Tambah Produk Baru</h1>
             <p className="text-gray-600">Lengkapi form untuk menambahkan produk</p>
+            {user && (
+              <p className="text-sm text-green-600 mt-1">
+                Logged in as: {user.email}
+              </p>
+            )}
           </div>
         </div>
 
@@ -317,7 +347,6 @@ const AddProduct = () => {
                     value={formData.category} 
                     onValueChange={(value) => {
                       handleInputChange('category', value);
-                      // Reset variants when category changes
                       setVariants([]);
                     }}
                   >
@@ -334,7 +363,6 @@ const AddProduct = () => {
                   </Select>
                 </div>
 
-                {/* Product Variants Section */}
                 <div className="border-t pt-6">
                   <ProductVariants
                     category={formData.category}
