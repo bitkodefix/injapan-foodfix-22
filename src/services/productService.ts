@@ -21,6 +21,7 @@ import { db, storage } from '@/config/firebase';
 import { Product } from '@/types';
 
 const PRODUCTS_COLLECTION = 'products';
+const RECYCLE_BIN_COLLECTION = 'recycle_bin';
 const STORAGE_FOLDER = 'product-images';
 
 export const getCategories = async (): Promise<string[]> => {
@@ -167,6 +168,70 @@ export const updateProduct = async (id: string, updates: Partial<Product>) => {
     });
   } catch (error) {
     console.error('Error updating product:', error);
+    throw error;
+  }
+};
+
+export const moveProductToRecycleBin = async (product: Product) => {
+  try {
+    console.log('Moving product to recycle bin:', product.id);
+    
+    // Add to recycle bin collection
+    const recycleBinRef = collection(db, RECYCLE_BIN_COLLECTION);
+    await addDoc(recycleBinRef, {
+      original_table: 'products',
+      original_id: product.id,
+      data: product,
+      deleted_at: new Date().toISOString()
+    });
+    
+    // Delete from products collection
+    const productRef = doc(db, PRODUCTS_COLLECTION, product.id);
+    await deleteDoc(productRef);
+    
+    console.log('Product moved to recycle bin successfully');
+  } catch (error) {
+    console.error('Error moving product to recycle bin:', error);
+    throw error;
+  }
+};
+
+export const getRecycleBinItems = async () => {
+  try {
+    const recycleBinRef = collection(db, RECYCLE_BIN_COLLECTION);
+    const q = query(recycleBinRef, orderBy('deleted_at', 'desc'));
+    const snapshot = await getDocs(q);
+    
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error fetching recycle bin items:', error);
+    throw error;
+  }
+};
+
+export const restoreFromRecycleBin = async (recycleBinItem: any) => {
+  try {
+    console.log('Restoring item from recycle bin:', recycleBinItem.id);
+    
+    // Add back to original collection
+    if (recycleBinItem.original_table === 'products') {
+      const productsRef = collection(db, PRODUCTS_COLLECTION);
+      await addDoc(productsRef, {
+        ...recycleBinItem.data,
+        updated_at: new Date().toISOString()
+      });
+    }
+    
+    // Remove from recycle bin
+    const recycleBinRef = doc(db, RECYCLE_BIN_COLLECTION, recycleBinItem.id);
+    await deleteDoc(recycleBinRef);
+    
+    console.log('Item restored successfully');
+  } catch (error) {
+    console.error('Error restoring item from recycle bin:', error);
     throw error;
   }
 };
