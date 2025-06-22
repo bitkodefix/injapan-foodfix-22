@@ -1,4 +1,3 @@
-
 import { Link, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -6,8 +5,8 @@ import {
   ShoppingCart, 
   Users, 
   CheckCircle,
-  Trash2,
-  Upload
+  Upload,
+  Trash2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -50,11 +49,6 @@ const AdminSidebar = () => {
       title: 'Import/Export',
       href: '/admin/import-export',
       icon: Upload,
-    },
-    {
-      title: 'Recycle Bin',
-      href: '/admin/recycle-bin',
-      icon: Trash2,
     },
   ];
 
