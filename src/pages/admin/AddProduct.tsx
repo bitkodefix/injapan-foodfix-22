@@ -1,7 +1,7 @@
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useFirebaseAuth';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,17 +9,18 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Save, ArrowLeft } from 'lucide-react';
+import { Save, ArrowLeft, X, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '@/components/admin/AdminLayout';
 import ProductVariants from '@/components/admin/ProductVariants';
+import { addProduct, uploadProductImages } from '@/services/productService';
 
 const AddProduct = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -35,23 +36,17 @@ const AddProduct = () => {
     'Makanan Siap Saji',
     'Bahan Masak Beku',
     'Sayur Segar/Beku',
-    'Sayur Beku'
+    'Sayur Beku',
+    'Kerupuk',
+    'Bon Cabe'
   ];
 
   const handleInputChange = (field: string, value: string) => {
-    console.log(`Updating ${field} to:`, value);
-    setFormData(prev => {
-      const newData = { ...prev, [field]: value };
-      console.log('New form data:', newData);
-      return newData;
-    });
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    console.log('Price input changed to:', value);
-    
-    // Allow empty string or valid numbers
     if (value === '' || /^\d+$/.test(value)) {
       handleInputChange('price', value);
     }
@@ -59,95 +54,56 @@ const AddProduct = () => {
 
   const handleStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    console.log('Stock input changed to:', value);
-    
-    // Allow empty string or valid numbers
     if (value === '' || /^\d+$/.test(value)) {
       handleInputChange('stock', value);
     }
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      console.log('Image file selected:', file.name, file.size);
-      
-      // Check file size (5MB limit)
+    const files = Array.from(e.target.files || []);
+    
+    // Validate files
+    const validFiles = files.filter(file => {
       if (file.size > 5 * 1024 * 1024) {
         toast({
           title: "Error",
-          description: "Ukuran file terlalu besar. Maksimal 5MB",
+          description: `File ${file.name} terlalu besar. Maksimal 5MB`,
           variant: "destructive"
         });
-        return;
+        return false;
       }
 
-      // Check file type
       const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
       if (!allowedTypes.includes(file.type)) {
         toast({
           title: "Error",
-          description: "Format file tidak didukung. Gunakan JPEG, PNG, WebP, atau GIF",
+          description: `Format file ${file.name} tidak didukung`,
           variant: "destructive"
         });
-        return;
+        return false;
       }
+      return true;
+    });
 
-      setImageFile(file);
+    setImageFiles(prev => [...prev, ...validFiles]);
+
+    // Create previews
+    validFiles.forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
-        setImagePreview(reader.result as string);
+        setImagePreviews(prev => [...prev, reader.result as string]);
       };
       reader.readAsDataURL(file);
-    }
+    });
   };
 
-  const uploadImage = async (): Promise<string | null> => {
-    if (!imageFile) return null;
-
-    console.log('Starting image upload...');
-
-    try {
-      const fileExt = imageFile.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-
-      console.log('Uploading file:', fileName);
-
-      const { data, error } = await supabase.storage
-        .from('product-images')
-        .upload(fileName, imageFile);
-
-      if (error) {
-        console.error('Error uploading image:', error);
-        throw error;
-      }
-
-      console.log('Image uploaded successfully:', data);
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('product-images')
-        .getPublicUrl(fileName);
-
-      console.log('Public URL generated:', publicUrl);
-      return publicUrl;
-    } catch (error) {
-      console.error('Upload failed:', error);
-      throw error;
-    }
+  const removeImage = (index: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    console.log('=== FORM SUBMISSION START ===');
-    console.log('Current user:', user);
-    console.log('Form data:', formData);
-    console.log('Environment:', {
-      hostname: window.location.hostname,
-      isVercel: window.location.hostname.includes('vercel.app'),
-      isLovable: window.location.hostname.includes('lovable.app'),
-      isLocalhost: window.location.hostname === 'localhost'
-    });
     
     if (!formData.name || !formData.price || !formData.category || !formData.stock) {
       toast({
@@ -158,7 +114,6 @@ const AddProduct = () => {
       return;
     }
 
-    // Validate price and stock are valid numbers
     const priceNum = parseInt(formData.price);
     const stockNum = parseInt(formData.stock);
     
@@ -181,7 +136,6 @@ const AddProduct = () => {
     }
 
     if (!user) {
-      console.error('No authenticated user found');
       toast({
         title: "Error",
         description: "Anda harus login terlebih dahulu",
@@ -193,12 +147,10 @@ const AddProduct = () => {
     setLoading(true);
 
     try {
-      // Upload image if provided
-      let imageUrl = null;
-      if (imageFile) {
-        console.log('Uploading image...');
-        imageUrl = await uploadImage();
-        console.log('Image upload result:', imageUrl);
+      // Upload images if provided
+      let imageUrls: string[] = [];
+      if (imageFiles.length > 0) {
+        imageUrls = await uploadProductImages(imageFiles);
       }
 
       const productData = {
@@ -207,30 +159,14 @@ const AddProduct = () => {
         price: priceNum,
         category: formData.category,
         stock: stockNum,
-        image_url: imageUrl || '/placeholder.svg',
-        variants: variants || []
+        images: imageUrls.length > 0 ? imageUrls : ['/placeholder.svg'],
+        variants: variants || [],
+        status: 'active' as const,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
 
-      console.log('Inserting product with data:', productData);
-      console.log('Authenticated user UID:', user.uid);
-
-      // Insert product with explicit logging
-      const { data: insertedData, error } = await supabase
-        .from('products')
-        .insert([productData])
-        .select();
-
-      if (error) {
-        console.error('=== SUPABASE INSERT ERROR ===');
-        console.error('Error code:', error.code);
-        console.error('Error message:', error.message);
-        console.error('Error details:', error.details);
-        console.error('Error hint:', error.hint);
-        throw error;
-      }
-
-      console.log('=== INSERT SUCCESS ===');
-      console.log('Inserted data:', insertedData);
+      await addProduct(productData);
 
       toast({
         title: "Berhasil!",
@@ -239,18 +175,14 @@ const AddProduct = () => {
 
       navigate('/admin/products');
     } catch (error) {
-      console.error('=== PRODUCT ADDITION ERROR ===');
-      console.error('Error object:', error);
+      console.error('Product addition error:', error);
       
       let errorMessage = "Gagal menambahkan produk";
       if (error instanceof Error) {
-        console.error('Error message:', error.message);
-        if (error.message.includes('storage') || error.message.includes('violates row-level security')) {
-          errorMessage = "Masalah dengan izin akses. Pastikan Anda sudah login sebagai admin.";
-        } else if (error.message.includes('duplicate')) {
-          errorMessage = "Produk dengan nama yang sama sudah ada";
-        } else if (error.message.includes('authentication')) {
-          errorMessage = "Masalah autentikasi. Silakan login ulang";
+        if (error.message.includes('storage')) {
+          errorMessage = "Gagal mengupload gambar. Silakan coba lagi";
+        } else if (error.message.includes('permission')) {
+          errorMessage = "Tidak memiliki izin untuk menambahkan produk";
         }
       }
       
@@ -372,26 +304,41 @@ const AddProduct = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="image">Foto Produk</Label>
+                  <Label htmlFor="images">Foto Produk (Multi-upload)</Label>
                   <div className="mt-2">
                     <Input
-                      id="image"
+                      id="images"
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={handleImageChange}
                       className="mb-4"
                     />
                     <p className="text-sm text-gray-500 mb-2">
-                      Format: JPEG, PNG, WebP, GIF. Maksimal 5MB
+                      Format: JPEG, PNG, WebP, GIF. Maksimal 5MB per file. Bisa upload beberapa gambar sekaligus.
                     </p>
-                    {imagePreview && (
+                    
+                    {imagePreviews.length > 0 && (
                       <div className="mt-4">
-                        <p className="text-sm text-gray-600 mb-2">Preview:</p>
-                        <img 
-                          src={imagePreview} 
-                          alt="Preview" 
-                          className="w-32 h-32 object-cover rounded-lg border"
-                        />
+                        <p className="text-sm text-gray-600 mb-2">Preview ({imagePreviews.length} gambar):</p>
+                        <div className="grid grid-cols-3 gap-4">
+                          {imagePreviews.map((preview, index) => (
+                            <div key={index} className="relative">
+                              <img 
+                                src={preview} 
+                                alt={`Preview ${index + 1}`} 
+                                className="w-full h-24 object-cover rounded-lg border"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeImage(index)}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

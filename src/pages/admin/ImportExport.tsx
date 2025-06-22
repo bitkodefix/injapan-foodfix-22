@@ -1,336 +1,193 @@
-import { useState, useRef } from 'react';
+
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Upload, Download, FileText, CheckCircle, AlertCircle } from 'lucide-react';
-import { useProducts } from '@/hooks/useProducts';
-import { supabase } from '@/integrations/supabase/client';
+import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
-import { exportProductsToCSV, parseCSVProducts } from '@/utils/exportUtils';
-import { useLogAdminAction } from '@/hooks/useAdminLogs';
+import { Download, Upload, AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/components/admin/AdminLayout';
+import { getAllProducts } from '@/services/productService';
+import { getAllOrders } from '@/services/orderService';
+import { getAllUsers } from '@/services/userService';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const ImportExport = () => {
-  const { data: products = [], refetch } = useProducts();
-  const logAction = useLogAdminAction();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importData, setImportData] = useState<any[]>([]);
-  const [importPreview, setImportPreview] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleExportProducts = () => {
-    exportProductsToCSV(products);
-    logAction.mutate({
-      action: 'export_products',
-      target_type: 'products',
-      details: { count: products.length }
-    });
-    toast({
-      title: "Export Berhasil!",
-      description: `${products.length} produk berhasil diekspor ke CSV`,
-    });
+  const exportData = async (type: 'products' | 'orders' | 'users') => {
+    setLoading(true);
+    try {
+      let data;
+      let filename;
+
+      switch (type) {
+        case 'products':
+          data = await getAllProducts();
+          filename = `products-${new Date().toISOString().split('T')[0]}.json`;
+          break;
+        case 'orders':
+          data = await getAllOrders();
+          filename = `orders-${new Date().toISOString().split('T')[0]}.json`;
+          break;
+        case 'users':
+          data = await getAllUsers();
+          filename = `users-${new Date().toISOString().split('T')[0]}.json`;
+          break;
+        default:
+          throw new Error('Invalid export type');
+      }
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Berhasil",
+        description: `Data ${type} berhasil diekspor`,
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({
+        title: "Export Gagal",
+        description: `Gagal mengekspor data ${type}`,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-      toast({
-        title: "Error",
-        description: "Silakan upload file CSV yang valid",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const csvText = e.target?.result as string;
-      try {
-        const parsedData = parseCSVProducts(csvText);
-        setImportData(parsedData);
-        setImportPreview(true);
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "Gagal memproses file CSV. Pastikan format file benar.",
-          variant: "destructive"
-        });
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleImportProducts = async () => {
-    if (importData.length === 0) return;
-
-    setImporting(true);
+    setLoading(true);
     try {
-      const validProducts = importData.filter(product => 
-        product.name && product.price && product.category
-      );
-
-      if (validProducts.length === 0) {
-        throw new Error('Tidak ada produk valid untuk diimport');
-      }
-
-      const { error } = await supabase
-        .from('products')
-        .insert(validProducts.map(product => ({
-          ...product,
-          status: product.status || 'active',
-          stock: product.stock || 0
-        })));
-
-      if (error) throw error;
-
-      logAction.mutate({
-        action: 'import_products',
-        target_type: 'products',
-        details: { count: validProducts.length }
-      });
-
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      console.log('Imported data:', data);
+      
       toast({
-        title: "Import Berhasil!",
-        description: `${validProducts.length} produk berhasil ditambahkan`,
+        title: "Import Berhasil",
+        description: `File ${file.name} berhasil diimpor (preview mode)`,
       });
-
-      setImportData([]);
-      setImportPreview(false);
-      refetch();
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     } catch (error) {
-      console.error('Error importing products:', error);
+      console.error('Import error:', error);
       toast({
-        title: "Error",
-        description: "Gagal mengimport produk",
-        variant: "destructive"
+        title: "Import Gagal",
+        description: "Format file tidak valid atau terjadi kesalahan",
+        variant: "destructive",
       });
     } finally {
-      setImporting(false);
+      setLoading(false);
     }
   };
-
-  const csvTemplate = `"Nama Produk","Harga (¥)","Stok","Status","Kategori","Deskripsi"
-"Contoh Mie Instan","500","10","Aktif","Makanan Ringan","Mie instan rasa ayam bawang"
-"Contoh Sambal","750","5","Aktif","Bumbu Dapur","Sambal terasi pedas manis"
-"Contoh Kerupuk","300","20","Tidak Aktif","Makanan Ringan","Kerupuk udang renyah"`;
 
   return (
     <AdminLayout>
       <div className="p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Import & Export Data</h1>
-          <p className="text-gray-600">Kelola data produk secara massal</p>
+          <p className="text-gray-600">Kelola data dengan import dan export file JSON</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Export Section */}
+        <Alert className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Fitur import masih dalam tahap pengembangan. Saat ini hanya mendukung preview data yang diimport.
+          </AlertDescription>
+        </Alert>
+
+        <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Download className="w-5 h-5" />
-                <span>Export Data Produk</span>
+                <span>Export Data</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-gray-600">
-                Export semua data produk ke file CSV untuk backup atau analisis.
+              <p className="text-sm text-gray-600">
+                Ekspor data dari Firebase ke file JSON
               </p>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-medium mb-2">Data yang akan diekspor:</h4>
-                <ul className="text-sm text-gray-600 space-y-1">
-                  <li>• ID Produk</li>
-                  <li>• Nama produk</li>
-                  <li>• Harga (dalam format ¥)</li>
-                  <li>• Stok tersedia</li>
-                  <li>• Status (Aktif/Tidak Aktif/Stok Habis)</li>
-                  <li>• Kategori</li>
-                  <li>• Deskripsi lengkap</li>
-                  <li>• Tanggal input (format Indonesia)</li>
-                  <li>• Varian produk (jika ada)</li>
-                </ul>
+              
+              <div className="space-y-3">
+                <Button
+                  onClick={() => exportData('products')}
+                  disabled={loading}
+                  className="w-full"
+                  variant="outline"
+                >
+                  Export Produk
+                </Button>
+                
+                <Button
+                  onClick={() => exportData('orders')}
+                  disabled={loading}
+                  className="w-full"
+                  variant="outline"
+                >
+                  Export Pesanan
+                </Button>
+                
+                <Button
+                  onClick={() => exportData('users')}
+                  disabled={loading}
+                  className="w-full"
+                  variant="outline"
+                >
+                  Export Users
+                </Button>
               </div>
-              <Alert>
-                <FileText className="h-4 w-4" />
-                <AlertDescription>
-                  File CSV akan diformat dengan encoding UTF-8 dan BOM untuk kompatibilitas dengan Excel.
-                </AlertDescription>
-              </Alert>
-              <Button 
-                onClick={handleExportProducts}
-                className="w-full bg-green-600 hover:bg-green-700"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export {products.length} Produk ke CSV
-              </Button>
             </CardContent>
           </Card>
 
-          {/* Import Section */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Upload className="w-5 h-5" />
-                <span>Import Data Produk</span>
+                <span>Import Data</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-gray-600">
-                Upload file CSV untuk menambahkan banyak produk sekaligus.
+              <p className="text-sm text-gray-600">
+                Import data dari file JSON (Preview Mode)
               </p>
               
-              <Alert>
-                <FileText className="h-4 w-4" />
-                <AlertDescription>
-                  File CSV harus menggunakan format yang benar dengan header dalam bahasa Indonesia. 
-                  Status produk: "Aktif", "Tidak Aktif", atau "Stok Habis".
-                </AlertDescription>
-              </Alert>
-
               <div>
-                <label className="block text-sm font-medium mb-2">Upload File CSV:</label>
+                <Label htmlFor="import-file">Pilih File JSON</Label>
                 <Input
-                  ref={fileInputRef}
+                  id="import-file"
                   type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  className="mb-4"
+                  accept=".json"
+                  onChange={handleImport}
+                  disabled={loading}
+                  className="mt-2"
                 />
               </div>
-
-              <div>
-                <h4 className="font-medium mb-2">Template CSV (Contoh Format):</h4>
-                <Textarea
-                  value={csvTemplate}
-                  readOnly
-                  rows={5}
-                  className="text-xs font-mono bg-gray-50"
-                />
-                <div className="mt-2 text-xs text-gray-600">
-                  <p><strong>Catatan format:</strong></p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>Harga dalam angka (tanpa simbol ¥)</li>
-                    <li>Status: "Aktif", "Tidak Aktif", atau "Stok Habis"</li>
-                    <li>Gunakan tanda kutip untuk text yang mengandung koma</li>
-                    <li>Encoding file harus UTF-8</li>
-                  </ul>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => {
-                    const BOM = '\uFEFF';
-                    const blob = new Blob([BOM + csvTemplate], { type: 'text/csv;charset=utf-8;' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'template-produk-injapan.csv';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                >
-                  <Download className="w-4 h-4 mr-1" />
-                  Download Template
-                </Button>
-              </div>
+              
+              <p className="text-xs text-gray-500">
+                Format yang didukung: JSON hasil export dari sistem ini
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Import Preview */}
-        {importPreview && importData.length > 0 && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <CheckCircle className="w-5 h-5 text-green-600" />
-                <span>Preview Import Data</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4">
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Preview {importData.length} produk yang akan diimport. Periksa data sebelum melanjutkan.
-                  </AlertDescription>
-                </Alert>
-              </div>
-
-              <div className="max-h-80 overflow-y-auto border rounded-lg">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="p-3 text-left font-medium">Nama</th>
-                      <th className="p-3 text-left font-medium">Harga</th>
-                      <th className="p-3 text-left font-medium">Stok</th>
-                      <th className="p-3 text-left font-medium">Status</th>
-                      <th className="p-3 text-left font-medium">Kategori</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importData.slice(0, 10).map((product, index) => (
-                      <tr key={index} className="border-t hover:bg-gray-50">
-                        <td className="p-3 font-medium">{product.name}</td>
-                        <td className="p-3">¥{product.price.toLocaleString()}</td>
-                        <td className="p-3">{product.stock}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            product.status === 'active' ? 'bg-green-100 text-green-800' :
-                            product.status === 'inactive' ? 'bg-gray-100 text-gray-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {product.status === 'active' ? 'Aktif' : 
-                             product.status === 'inactive' ? 'Tidak Aktif' : 'Stok Habis'}
-                          </span>
-                        </td>
-                        <td className="p-3">{product.category}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {importData.length > 10 && (
-                  <div className="p-3 text-center text-gray-500 text-sm bg-gray-50">
-                    ... dan {importData.length - 10} produk lainnya
-                  </div>
-                )}
-              </div>
-
-              <div className="flex space-x-4 mt-4">
-                <Button
-                  onClick={handleImportProducts}
-                  disabled={importing}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {importing ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  ) : (
-                    <Upload className="w-4 h-4 mr-2" />
-                  )}
-                  Import {importData.length} Produk
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setImportData([]);
-                    setImportPreview(false);
-                    if (fileInputRef.current) {
-                      fileInputRef.current.value = '';
-                    }
-                  }}
-                >
-                  Batal
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        {loading && (
+          <div className="mt-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2 text-gray-600">Memproses...</p>
+          </div>
         )}
       </div>
     </AdminLayout>

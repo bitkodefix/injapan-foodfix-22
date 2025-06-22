@@ -1,16 +1,20 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getAllOrders, getOrdersByUser, createOrder } from '@/services/orderService';
 import { Order, CartItem } from '@/types';
-
-// Mock orders data
-const mockOrders: Order[] = [];
 
 export const useOrders = () => {
   return useQuery({
     queryKey: ['orders'],
-    queryFn: async (): Promise<Order[]> => {
-      return mockOrders;
-    },
+    queryFn: getAllOrders,
+  });
+};
+
+export const useUserOrders = (userId: string) => {
+  return useQuery({
+    queryKey: ['orders', 'user', userId],
+    queryFn: () => getOrdersByUser(userId),
+    enabled: !!userId,
   });
 };
 
@@ -29,23 +33,17 @@ export const useCreateOrder = () => {
       customerInfo: any;
       userId?: string;
     }) => {
-      // Mock order creation - in real app this would save to your preferred database
-      const newOrder = {
-        id: Date.now().toString(),
-        user_id: userId || null,
-        total_price: totalPrice,
+      return await createOrder({
+        user_id: userId,
         customer_info: customerInfo,
         items: items,
-        status: 'pending' as const,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      mockOrders.push(newOrder);
-      return newOrder;
+        total_price: totalPrice,
+        status: 'pending'
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-orders'] });
     },
   });
 };

@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useProduct } from '@/hooks/useProducts';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,11 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Save, ArrowLeft } from 'lucide-react';
+import { Save, ArrowLeft, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { useQueryClient } from '@tanstack/react-query';
 import ProductVariants from '@/components/admin/ProductVariants';
+import { updateProduct, uploadProductImages } from '@/services/productService';
 
 const EditProduct = () => {
   const { id } = useParams<{ id: string }>();
@@ -22,8 +22,9 @@ const EditProduct = () => {
   const queryClient = useQueryClient();
   const { data: product, isLoading } = useProduct(id!);
   const [loading, setLoading] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
+  const [newImagePreviews, setNewImagePreviews] = useState<string[]>([]);
+  const [existingImages, setExistingImages] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -46,7 +47,6 @@ const EditProduct = () => {
 
   useEffect(() => {
     if (product) {
-      console.log('Setting form data from product:', product);
       setFormData({
         name: product.name,
         description: product.description || '',
@@ -54,24 +54,17 @@ const EditProduct = () => {
         category: product.category,
         stock: product.stock?.toString() || '0'
       });
-      setImagePreview(product.image_url);
+      setExistingImages(Array.isArray(product.images) ? product.images : [product.image_url].filter(Boolean));
       setVariants(product.variants || []);
     }
   }, [product]);
 
   const handleInputChange = (field: string, value: string) => {
-    console.log(`Updating ${field} to:`, value);
-    setFormData(prev => {
-      const newData = { ...prev, [field]: value };
-      console.log('New form data:', newData);
-      return newData;
-    });
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    console.log('Price input changed to:', value);
-    
     if (value === '' || /^\d+$/.test(value)) {
       handleInputChange('price', value);
     }
@@ -79,60 +72,58 @@ const EditProduct = () => {
 
   const handleStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    console.log('Stock input changed to:', value);
-    
     if (value === '' || /^\d+$/.test(value)) {
       handleInputChange('stock', value);
     }
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
+  const handleNewImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    
+    const validFiles = files.filter(file => {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "Error",
+          description: `File ${file.name} terlalu besar. Maksimal 5MB`,
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      if (!allowedTypes.includes(file.type)) {
+        toast({
+          title: "Error",
+          description: `Format file ${file.name} tidak didukung`,
+          variant: "destructive"
+        });
+        return false;
+      }
+      return true;
+    });
+
+    setNewImageFiles(prev => [...prev, ...validFiles]);
+
+    validFiles.forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
-        setImagePreview(reader.result as string);
+        setNewImagePreviews(prev => [...prev, reader.result as string]);
       };
       reader.readAsDataURL(file);
-    }
+    });
   };
 
-  const uploadImage = async (): Promise<string | null> => {
-    if (!imageFile) return null;
+  const removeExistingImage = (index: number) => {
+    setExistingImages(prev => prev.filter((_, i) => i !== index));
+  };
 
-    if (product?.image_url && product.image_url.includes('product-images')) {
-      const oldImagePath = product.image_url.split('/').pop();
-      if (oldImagePath) {
-        await supabase.storage
-          .from('product-images')
-          .remove([oldImagePath]);
-      }
-    }
-
-    const fileExt = imageFile.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-
-    const { data, error } = await supabase.storage
-      .from('product-images')
-      .upload(fileName, imageFile);
-
-    if (error) {
-      console.error('Error uploading image:', error);
-      return null;
-    }
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('product-images')
-      .getPublicUrl(fileName);
-
-    return publicUrl;
+  const removeNewImage = (index: number) => {
+    setNewImageFiles(prev => prev.filter((_, i) => i !== index));
+    setNewImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    console.log('Submitting form with data:', formData);
     
     if (!formData.name || !formData.price || !formData.category || !formData.stock) {
       toast({
@@ -167,40 +158,30 @@ const EditProduct = () => {
     setLoading(true);
 
     try {
-      const imageUrl = await uploadImage();
+      // Upload new images if provided
+      let newImageUrls: string[] = [];
+      if (newImageFiles.length > 0) {
+        newImageUrls = await uploadProductImages(newImageFiles);
+      }
 
-      console.log('Updating product with:', {
+      // Combine existing and new images
+      const allImages = [...existingImages, ...newImageUrls];
+
+      const updateData = {
         name: formData.name,
         description: formData.description,
         price: priceNum,
         category: formData.category,
         stock: stockNum,
+        images: allImages.length > 0 ? allImages : ['/placeholder.svg'],
         variants: variants,
-        ...(imageUrl && { image_url: imageUrl })
-      });
+        updated_at: new Date().toISOString()
+      };
 
-      const { error } = await supabase
-        .from('products')
-        .update({
-          name: formData.name,
-          description: formData.description,
-          price: priceNum,
-          category: formData.category,
-          stock: stockNum,
-          variants: variants,
-          ...(imageUrl && { image_url: imageUrl })
-        })
-        .eq('id', id!);
-
-      if (error) throw error;
+      await updateProduct(id!, updateData);
 
       await queryClient.invalidateQueries({ queryKey: ['products'] });
       await queryClient.invalidateQueries({ queryKey: ['product', id] });
-      await queryClient.invalidateQueries({ queryKey: ['categories'] });
-
-      await queryClient.refetchQueries({ queryKey: ['product', id] });
-
-      console.log('Product updated successfully, cache invalidated');
 
       toast({
         title: "Berhasil!",
@@ -213,10 +194,10 @@ const EditProduct = () => {
       
       let errorMessage = "Gagal mengupdate produk";
       if (error instanceof Error) {
-        if (error.message.includes('storage') || error.message.includes('violates row-level security')) {
+        if (error.message.includes('storage')) {
           errorMessage = "Gagal mengupload gambar. Silakan coba lagi";
-        } else if (error.message.includes('authentication')) {
-          errorMessage = "Masalah autentikasi. Silakan login ulang";
+        } else if (error.message.includes('permission')) {
+          errorMessage = "Tidak memiliki izin untuk mengupdate produk";
         }
       }
       
@@ -358,23 +339,65 @@ const EditProduct = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="image">Foto Produk</Label>
+                  <Label>Foto Produk Saat Ini</Label>
+                  {existingImages.length > 0 && (
+                    <div className="mt-2 mb-4">
+                      <div className="grid grid-cols-3 gap-4">
+                        {existingImages.map((imageUrl, index) => (
+                          <div key={index} className="relative">
+                            <img 
+                              src={imageUrl} 
+                              alt={`Existing ${index + 1}`} 
+                              className="w-full h-24 object-cover rounded-lg border"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeExistingImage(index)}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <Label htmlFor="newImages">Tambah Foto Baru</Label>
                   <div className="mt-2">
                     <Input
-                      id="image"
+                      id="newImages"
                       type="file"
                       accept="image/*"
-                      onChange={handleImageChange}
+                      multiple
+                      onChange={handleNewImageChange}
                       className="mb-4"
                     />
-                    {imagePreview && (
+                    <p className="text-sm text-gray-500 mb-2">
+                      Format: JPEG, PNG, WebP, GIF. Maksimal 5MB per file.
+                    </p>
+                    
+                    {newImagePreviews.length > 0 && (
                       <div className="mt-4">
-                        <p className="text-sm text-gray-600 mb-2">Preview:</p>
-                        <img 
-                          src={imagePreview} 
-                          alt="Preview" 
-                          className="w-32 h-32 object-cover rounded-lg border"
-                        />
+                        <p className="text-sm text-gray-600 mb-2">Preview Foto Baru:</p>
+                        <div className="grid grid-cols-3 gap-4">
+                          {newImagePreviews.map((preview, index) => (
+                            <div key={index} className="relative">
+                              <img 
+                                src={preview} 
+                                alt={`New Preview ${index + 1}`} 
+                                className="w-full h-24 object-cover rounded-lg border"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeNewImage(index)}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

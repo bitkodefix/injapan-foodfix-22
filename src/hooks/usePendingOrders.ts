@@ -1,14 +1,11 @@
 
 import { useQuery } from '@tanstack/react-query';
-import { Order } from '@/types';
+import { getPendingOrders } from '@/services/orderService';
 
 export const usePendingOrders = () => {
   return useQuery({
     queryKey: ['pending-orders'],
-    queryFn: async (): Promise<Order[]> => {
-      // Mock pending orders
-      return [];
-    },
+    queryFn: getPendingOrders,
     staleTime: 1000,
     refetchInterval: 5000,
   });

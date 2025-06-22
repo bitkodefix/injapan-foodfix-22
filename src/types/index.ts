@@ -1,10 +1,12 @@
+
 export interface Product {
   id: string;
   name: string;
   description: string;
   price: number;
   category: string;
-  image_url: string;
+  images: string[]; // Array of image URLs from Firebase Storage
+  image_url: string; // Backwards compatibility - first image from images array
   created_at: string;
   updated_at: string;
   stock: number;
@@ -150,4 +152,13 @@ export interface ReferralTransaction {
   updated_at: string;
   confirmed_at: string | null;
   confirmed_by: string | null;
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: 'user' | 'admin';
+  created_at: string;
+  updated_at?: string;
 }

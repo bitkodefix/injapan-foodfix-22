@@ -4,18 +4,24 @@ import {
   getDocs, 
   query, 
   where, 
-  orderBy, 
-  or,
+  orderBy,
   addDoc,
   updateDoc,
   deleteDoc,
   doc,
   getDoc
 } from 'firebase/firestore';
-import { db } from '@/config/firebase';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL,
+  deleteObject
+} from 'firebase/storage';
+import { db, storage } from '@/config/firebase';
 import { Product } from '@/types';
 
 const PRODUCTS_COLLECTION = 'products';
+const STORAGE_FOLDER = 'product-images';
 
 export const getCategories = async (): Promise<string[]> => {
   try {
@@ -83,12 +89,39 @@ export const getAllProducts = async (): Promise<Product[]> => {
     const q = query(productsRef, orderBy('created_at', 'desc'));
     const snapshot = await getDocs(q);
     
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Product));
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        // Ensure backwards compatibility with image_url field
+        image_url: Array.isArray(data.images) && data.images.length > 0 
+          ? data.images[0] 
+          : data.image_url || '/placeholder.svg'
+      } as Product;
+    });
   } catch (error) {
     console.error('Error fetching products:', error);
+    throw error;
+  }
+};
+
+export const uploadProductImages = async (files: File[]): Promise<string[]> => {
+  try {
+    const uploadPromises = files.map(async (file) => {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const storageRef = ref(storage, `${STORAGE_FOLDER}/${fileName}`);
+      
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+      
+      return downloadURL;
+    });
+
+    return await Promise.all(uploadPromises);
+  } catch (error) {
+    console.error('Error uploading images:', error);
     throw error;
   }
 };
@@ -97,7 +130,14 @@ export const addProduct = async (product: Omit<Product, 'id'>) => {
   try {
     const productsRef = collection(db, PRODUCTS_COLLECTION);
     const docRef = await addDoc(productsRef, {
-      ...product,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      category: product.category,
+      images: product.images || [],
+      variants: product.variants || [],
+      stock: product.stock,
+      status: product.status || 'active',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     });
@@ -137,7 +177,15 @@ export const getProduct = async (id: string): Promise<Product | null> => {
     const snapshot = await getDoc(productRef);
     
     if (snapshot.exists()) {
-      return { id: snapshot.id, ...snapshot.data() } as Product;
+      const data = snapshot.data();
+      return { 
+        id: snapshot.id, 
+        ...data,
+        // Ensure backwards compatibility with image_url field
+        image_url: Array.isArray(data.images) && data.images.length > 0 
+          ? data.images[0] 
+          : data.image_url || '/placeholder.svg'
+      } as Product;
     }
     return null;
   } catch (error) {

@@ -1,89 +1,86 @@
 
 import { useState } from 'react';
+import { useOrders } from '@/hooks/useOrders';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from '@/components/ui/table';
-import { ShoppingCart, Search, Filter, Eye } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { OrderTracking, OrderItem } from '@/types';
+import { toast } from '@/hooks/use-toast';
+import { Search, Eye, CheckCircle, XCircle, Clock, Package } from 'lucide-react';
 import AdminLayout from '@/components/admin/AdminLayout';
+import { Order } from '@/types';
+import { updateOrderStatus } from '@/services/orderService';
+import { useQueryClient } from '@tanstack/react-query';
 
 const OrdersHistory = () => {
+  const { data: orders = [], isLoading } = useOrders();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-
-  const { data: orders = [], isLoading } = useQuery({
-    queryKey: ['orders-history'],
-    queryFn: async (): Promise<OrderTracking[]> => {
-      const { data, error } = await supabase
-        .from('orders_tracking')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching orders:', error);
-        throw error;
-      }
-
-      return (data || []).map(order => ({
-        ...order,
-        items: Array.isArray(order.items) ? order.items as unknown as OrderItem[] : [],
-        status: order.status as 'pending' | 'processing' | 'completed' | 'cancelled'
-      }));
-    },
-  });
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const queryClient = useQueryClient();
 
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         order.customer_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         order.id.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = 
+      order.customer_info?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.customer_info?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.id.toLowerCase().includes(searchTerm.toLowerCase());
+    
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    
     return matchesSearch && matchesStatus;
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'processing': return 'bg-blue-100 text-blue-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const getStatusBadge = (status: string) => {
+    const config = {
+      pending: { color: 'bg-yellow-100 text-yellow-800', icon: Clock, label: 'Pending' },
+      confirmed: { color: 'bg-blue-100 text-blue-800', icon: CheckCircle, label: 'Confirmed' },
+      processing: { color: 'bg-purple-100 text-purple-800', icon: Package, label: 'Processing' },
+      completed: { color: 'bg-green-100 text-green-800', icon: CheckCircle, label: 'Completed' },
+      cancelled: { color: 'bg-red-100 text-red-800', icon: XCircle, label: 'Cancelled' },
+    };
+
+    const { color, icon: Icon, label } = config[status as keyof typeof config] || config.pending;
+
+    return (
+      <Badge className={`${color} flex items-center space-x-1`}>
+        <Icon className="w-3 h-3" />
+        <span>{label}</span>
+      </Badge>
+    );
+  };
+
+  const handleStatusChange = async (orderId: string, newStatus: string) => {
+    try {
+      await updateOrderStatus(orderId, newStatus);
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      
+      toast({
+        title: "Status Updated",
+        description: `Order status berhasil diubah ke ${newStatus}`,
+      });
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      toast({
+        title: "Error",
+        description: "Gagal mengubah status order",
+        variant: "destructive",
+      });
     }
   };
 
   const formatPrice = (price: number) => {
-    return `¥${price.toLocaleString()}`;
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('id-ID', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return new Intl.NumberFormat('ja-JP', {
+      style: 'currency',
+      currency: 'JPY',
+    }).format(price);
   };
 
   if (isLoading) {
     return (
       <AdminLayout>
-        <div className="p-8">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-            <div className="h-64 bg-gray-200 rounded"></div>
-          </div>
+        <div className="p-8 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
       </AdminLayout>
     );
@@ -94,119 +91,199 @@ const OrdersHistory = () => {
       <div className="p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Riwayat Pesanan</h1>
-          <p className="text-gray-600">Kelola semua pesanan yang masuk</p>
+          <p className="text-gray-600">Kelola dan monitor semua pesanan</p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <ShoppingCart className="w-5 h-5" />
-              <span>Daftar Pesanan</span>
-            </CardTitle>
-            
-            {/* Search and Filter */}
-            <div className="flex space-x-4 mt-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Cari berdasarkan nama, email, atau ID pesanan..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-48">
-                  <Filter className="w-4 h-4 mr-2" />
-                  <SelectValue placeholder="Filter Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Status</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="processing">Processing</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
+        {/* Filters */}
+        <div className="mb-6 flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                placeholder="Cari berdasarkan nama, email, atau ID pesanan..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
             </div>
-          </CardHeader>
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filter Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Status</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="confirmed">Confirmed</SelectItem>
+              <SelectItem value="processing">Processing</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-          <CardContent>
-            {filteredOrders.length === 0 ? (
-              <div className="text-center py-8">
-                <ShoppingCart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Belum ada pesanan yang tercatat</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID Pesanan</TableHead>
-                      <TableHead>Pelanggan</TableHead>
-                      <TableHead>Items</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredOrders.map((order) => (
-                      <TableRow key={order.id}>
-                        <TableCell className="font-mono text-sm">
-                          #{order.id.slice(0, 8)}
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{order.customer_name}</div>
-                            {order.customer_email && (
-                              <div className="text-sm text-gray-500">{order.customer_email}</div>
-                            )}
-                            {order.customer_phone && (
-                              <div className="text-sm text-gray-500">{order.customer_phone}</div>
-                            )}
+        {/* Orders List */}
+        <div className="space-y-4">
+          {filteredOrders.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <div className="text-6xl mb-4">📦</div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  Tidak ada pesanan ditemukan
+                </h3>
+                <p className="text-gray-600">
+                  {searchTerm || statusFilter !== 'all' 
+                    ? 'Coba ubah filter pencarian atau status'
+                    : 'Belum ada pesanan yang masuk'
+                  }
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            filteredOrders.map((order) => (
+              <Card key={order.id}>
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg">
+                        Order #{order.id.slice(-8)}
+                      </CardTitle>
+                      <p className="text-sm text-gray-600">
+                        {order.customer_info?.name} • {order.customer_info?.email}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(order.created_at).toLocaleString('id-ID')}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      {getStatusBadge(order.status)}
+                      <p className="text-lg font-bold mt-2">
+                        {formatPrice(order.total_price)}
+                      </p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Order Items */}
+                    <div>
+                      <h4 className="font-medium mb-2">Items ({order.items?.length || 0}):</h4>
+                      <div className="space-y-2">
+                        {order.items?.slice(0, 3).map((item, index) => (
+                          <div key={index} className="flex justify-between text-sm">
+                            <span>{item.name} x{item.quantity}</span>
+                            <span>{formatPrice(item.price * item.quantity)}</span>
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {order.items.slice(0, 2).map((item, index) => (
-                              <div key={index} className="truncate">
-                                {item.quantity}x {item.name}
-                              </div>
-                            ))}
-                            {order.items.length > 2 && (
-                              <div className="text-gray-500">
-                                +{order.items.length - 2} lainnya
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {formatPrice(order.total_amount)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getStatusColor(order.status)}>
-                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-gray-500">
-                          {formatDate(order.created_at)}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm">
-                            <Eye className="w-4 h-4 mr-1" />
-                            Detail
-                          </Button>
-                        </TableCell>
-                      </TableRow>
+                        ))}
+                        {(order.items?.length || 0) > 3 && (
+                          <p className="text-sm text-gray-500">
+                            dan {(order.items?.length || 0) - 3} item lainnya...
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Customer Info */}
+                    <div>
+                      <h4 className="font-medium mb-2">Alamat Pengiriman:</h4>
+                      <p className="text-sm text-gray-600">
+                        {order.customer_info?.address}, {order.customer_info?.prefecture} {order.customer_info?.postal_code}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Phone: {order.customer_info?.phone}
+                      </p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex space-x-2 pt-4 border-t">
+                      <Select
+                        value={order.status}
+                        onValueChange={(newStatus) => handleStatusChange(order.id, newStatus)}
+                      >
+                        <SelectTrigger className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="confirmed">Confirmed</SelectItem>
+                          <SelectItem value="processing">Processing</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedOrder(order)}
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Detail
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        {/* Order Detail Modal/Dialog would go here */}
+        {selectedOrder && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Detail Order #{selectedOrder.id.slice(-8)}</CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedOrder(null)}
+                  >
+                    ✕
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h4 className="font-medium mb-2">Customer Information:</h4>
+                  <div className="bg-gray-50 p-3 rounded">
+                    <p><strong>Name:</strong> {selectedOrder.customer_info?.name}</p>
+                    <p><strong>Email:</strong> {selectedOrder.customer_info?.email}</p>
+                    <p><strong>Phone:</strong> {selectedOrder.customer_info?.phone}</p>
+                    <p><strong>Address:</strong> {selectedOrder.customer_info?.address}</p>
+                    <p><strong>Prefecture:</strong> {selectedOrder.customer_info?.prefecture}</p>
+                    <p><strong>Postal Code:</strong> {selectedOrder.customer_info?.postal_code}</p>
+                    {selectedOrder.customer_info?.notes && (
+                      <p><strong>Notes:</strong> {selectedOrder.customer_info.notes}</p>
+                    )}
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium mb-2">Order Items:</h4>
+                  <div className="space-y-2">
+                    {selectedOrder.items?.map((item, index) => (
+                      <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                        <div>
+                          <p className="font-medium">{item.name}</p>
+                          <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
+                        </div>
+                        <p className="font-medium">{formatPrice(item.price * item.quantity)}</p>
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  </div>
+                  <div className="border-t pt-2 mt-2">
+                    <div className="flex justify-between font-bold">
+                      <span>Total:</span>
+                      <span>{formatPrice(selectedOrder.total_price)}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
