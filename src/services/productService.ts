@@ -1,4 +1,3 @@
-
 import { 
   collection, 
   getDocs, 
@@ -18,7 +17,7 @@ import {
   deleteObject
 } from 'firebase/storage';
 import { db, storage } from '@/config/firebase';
-import { Product } from '@/types';
+import { Product, RecycleBinItem } from '@/types';
 
 const PRODUCTS_COLLECTION = 'products';
 const RECYCLE_BIN_COLLECTION = 'recycle_bin';
@@ -196,7 +195,7 @@ export const moveProductToRecycleBin = async (product: Product) => {
   }
 };
 
-export const getRecycleBinItems = async () => {
+export const getRecycleBinItems = async (): Promise<RecycleBinItem[]> => {
   try {
     const recycleBinRef = collection(db, RECYCLE_BIN_COLLECTION);
     const q = query(recycleBinRef, orderBy('deleted_at', 'desc'));
@@ -204,8 +203,11 @@ export const getRecycleBinItems = async () => {
     
     return snapshot.docs.map(doc => ({
       id: doc.id,
-      ...doc.data()
-    }));
+      original_table: doc.data().original_table,
+      original_id: doc.data().original_id,
+      data: doc.data().data,
+      deleted_at: doc.data().deleted_at
+    })) as RecycleBinItem[];
   } catch (error) {
     console.error('Error fetching recycle bin items:', error);
     throw error;

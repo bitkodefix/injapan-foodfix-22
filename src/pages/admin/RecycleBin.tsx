@@ -16,6 +16,7 @@ import { Trash2, RotateCcw, AlertTriangle, Package } from 'lucide-react';
 import { useRecycleBin, useRestoreFromRecycleBin } from '@/hooks/useRecycleBin';
 import { useLogAdminAction } from '@/hooks/useAdminLogs';
 import { toast } from '@/hooks/use-toast';
+import { RecycleBinItem } from '@/types';
 import AdminLayout from '@/components/admin/AdminLayout';
 
 const RecycleBin = () => {
@@ -23,7 +24,7 @@ const RecycleBin = () => {
   const restoreItem = useRestoreFromRecycleBin();
   const logAction = useLogAdminAction();
 
-  const handleRestore = async (item: any) => {
+  const handleRestore = async (item: RecycleBinItem) => {
     try {
       await restoreItem.mutateAsync(item);
       logAction.mutate({
@@ -115,7 +116,7 @@ const RecycleBin = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {recycleBinItems.map((item) => (
+                    {recycleBinItems.map((item: RecycleBinItem) => (
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="flex items-center space-x-2">

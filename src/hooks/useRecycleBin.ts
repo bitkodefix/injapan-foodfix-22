@@ -4,7 +4,7 @@ import { getRecycleBinItems, restoreFromRecycleBin, moveProductToRecycleBin } fr
 import { RecycleBinItem, Product } from '@/types';
 
 export const useRecycleBin = () => {
-  return useQuery({
+  return useQuery<RecycleBinItem[]>({
     queryKey: ['recycle-bin'],
     queryFn: getRecycleBinItems,
   });
