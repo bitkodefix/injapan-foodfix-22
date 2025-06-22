@@ -1,7 +1,6 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/hooks/useFirebaseAuth';
 import { toast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -160,6 +159,7 @@ const AddProduct = () => {
         category: formData.category,
         stock: stockNum,
         images: imageUrls.length > 0 ? imageUrls : ['/placeholder.svg'],
+        image_url: imageUrls.length > 0 ? imageUrls[0] : '/placeholder.svg',
         variants: variants || [],
         status: 'active' as const,
         created_at: new Date().toISOString(),
