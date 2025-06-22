@@ -17,8 +17,14 @@ export const useOrderOperations = () => {
       return orderId;
     },
     onSuccess: () => {
+      // Invalidate multiple query keys to ensure data refresh
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['pendingOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-orders'] });
+      
+      // Force refetch immediately
+      queryClient.refetchQueries({ queryKey: ['orders'] });
+      queryClient.refetchQueries({ queryKey: ['pending-orders'] });
+      
       toast({
         title: "Order Confirmed",
         description: "Order has been confirmed successfully.",
@@ -44,8 +50,14 @@ export const useOrderOperations = () => {
       return orderId;
     },
     onSuccess: () => {
+      // Invalidate multiple query keys to ensure data refresh
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['pendingOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-orders'] });
+      
+      // Force refetch immediately
+      queryClient.refetchQueries({ queryKey: ['orders'] });
+      queryClient.refetchQueries({ queryKey: ['pending-orders'] });
+      
       toast({
         title: "Order Cancelled",
         description: "Order has been cancelled successfully.",
