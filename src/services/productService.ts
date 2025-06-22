@@ -108,18 +108,24 @@ export const getAllProducts = async (): Promise<Product[]> => {
 
 export const uploadProductImages = async (files: File[]): Promise<string[]> => {
   try {
+    console.log('Starting image upload process, files count:', files.length);
+    
     const uploadPromises = files.map(async (file) => {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const storageRef = ref(storage, `${STORAGE_FOLDER}/${fileName}`);
       
+      console.log('Uploading file:', fileName);
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
+      console.log('File uploaded successfully:', downloadURL);
       
       return downloadURL;
     });
 
-    return await Promise.all(uploadPromises);
+    const results = await Promise.all(uploadPromises);
+    console.log('All images uploaded successfully:', results);
+    return results;
   } catch (error) {
     console.error('Error uploading images:', error);
     throw error;
@@ -128,6 +134,8 @@ export const uploadProductImages = async (files: File[]): Promise<string[]> => {
 
 export const addProduct = async (product: Omit<Product, 'id'>) => {
   try {
+    console.log('Adding product to Firestore:', product);
+    
     const productsRef = collection(db, PRODUCTS_COLLECTION);
     const docRef = await addDoc(productsRef, {
       name: product.name,
@@ -141,6 +149,8 @@ export const addProduct = async (product: Omit<Product, 'id'>) => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     });
+    
+    console.log('Product added successfully with ID:', docRef.id);
     return docRef.id;
   } catch (error) {
     console.error('Error adding product:', error);
