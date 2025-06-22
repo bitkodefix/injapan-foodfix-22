@@ -1,10 +1,10 @@
-
 import { useAdminStats } from '@/hooks/useAdminStats';
 import { useAdminLogs } from '@/hooks/useAdminLogs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import DashboardStatsCards from '@/components/admin/DashboardStatsCards';
 import AdminLayout from '@/components/admin/AdminLayout';
+import SeedDataButton from '@/components/admin/SeedDataButton';
 
 const EnhancedAdminDashboard = () => {
   const { data: stats, isLoading: statsLoading } = useAdminStats();
@@ -33,9 +33,12 @@ const EnhancedAdminDashboard = () => {
   return (
     <AdminLayout>
       <div className="p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard Admin Injapan Food</h1>
-          <p className="text-gray-600">Selamat datang di panel admin yang telah ditingkatkan</p>
+        <div className="mb-8 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard Admin Injapan Food</h1>
+            <p className="text-gray-600">Selamat datang di panel admin yang telah ditingkatkan</p>
+          </div>
+          <SeedDataButton />
         </div>
 
         <DashboardStatsCards stats={stats} />
