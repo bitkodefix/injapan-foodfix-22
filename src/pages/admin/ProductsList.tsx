@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
 import { deleteProduct } from '@/services/productService';
@@ -144,7 +145,6 @@ const ProductsList = () => {
                   
                   <div className="flex-1">
                     <h3 className="font-semibold text-lg">{product.name}</h3>
-                    <p className="text-gray-600 text-sm line-clamp-2">{product.description}</p>
                     <div className="flex items-center space-x-3 mt-2">
                       <span className="font-bold text-red-600 text-lg">¥{product.price}</span>
                       <Badge variant="secondary">{product.category}</Badge>
