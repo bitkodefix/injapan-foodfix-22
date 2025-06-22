@@ -1,156 +1,70 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
 
-interface AppSetting {
-  id: string;
-  value: any;
-  description?: string;
-  created_at: string;
-  updated_at: string;
+import { useState, useEffect } from 'react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '@/config/firebase';
+import { useAuth } from '@/hooks/useFirebaseAuth';
+
+interface AppSettings {
+  theme: 'light' | 'dark' | 'system';
+  language: 'id' | 'en';
+  notifications: boolean;
+  autoSave: boolean;
 }
 
-interface SettingsHistory {
-  id: string;
-  setting_id: string;
-  old_value: any;
-  new_value: any;
-  changed_by: string;
-  changed_at: string;
-  notes?: string;
-}
-
-interface ReferralCommissionValue {
-  rate: number;
-}
+const defaultSettings: AppSettings = {
+  theme: 'system',
+  language: 'id',
+  notifications: true,
+  autoSave: true,
+};
 
 export const useAppSettings = () => {
-  return useQuery({
-    queryKey: ['app-settings'],
-    queryFn: async (): Promise<AppSetting[]> => {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('*')
-        .order('id');
-
-      if (error) {
-        console.error('Error fetching app settings:', error);
-        throw error;
-      }
-
-      return data || [];
-    },
-  });
-};
-
-export const useReferralCommissionRate = () => {
-  return useQuery({
-    queryKey: ['referral-commission-rate'],
-    queryFn: async (): Promise<number> => {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('id', 'referral_commission_rate')
-        .single();
-
-      if (error) {
-        console.error('Error fetching referral commission rate:', error);
-        throw error;
-      }
-
-      // Safe type conversion with proper error handling
-      try {
-        const value = data?.value as unknown;
-        if (value && typeof value === 'object' && 'rate' in value) {
-          return (value as ReferralCommissionValue).rate;
-        }
-        return 3; // Default fallback
-      } catch {
-        return 3; // Default fallback
-      }
-    },
-  });
-};
-
-export const useUpdateAppSetting = () => {
-  const queryClient = useQueryClient();
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
-  return useMutation({
-    mutationFn: async ({
-      settingId,
-      newValue,
-      notes
-    }: {
-      settingId: string;
-      newValue: any;
-      notes?: string;
-    }) => {
-      // First get the old value for history
-      const { data: oldSetting } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('id', settingId)
-        .single();
+  useEffect(() => {
+    if (user?.uid) {
+      loadUserSettings();
+    } else {
+      setLoading(false);
+    }
+  }, [user?.uid]);
 
-      // Update the setting
-      const { error: updateError } = await supabase
-        .from('app_settings')
-        .update({ value: newValue })
-        .eq('id', settingId);
-
-      if (updateError) {
-        console.error('Error updating setting:', updateError);
-        throw updateError;
+  const loadUserSettings = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      const settingsRef = doc(db, 'user_settings', user.uid);
+      const settingsDoc = await getDoc(settingsRef);
+      
+      if (settingsDoc.exists()) {
+        setSettings({ ...defaultSettings, ...settingsDoc.data() });
       }
+    } catch (error) {
+      console.error('Error loading user settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      // Add to history
-      const { error: historyError } = await supabase
-        .from('settings_history')
-        .insert({
-          setting_id: settingId,
-          old_value: oldSetting?.value || null,
-          new_value: newValue,
-          changed_by: user?.id,
-          notes: notes
-        });
+  const updateSettings = async (newSettings: Partial<AppSettings>) => {
+    if (!user?.uid) return;
 
-      if (historyError) {
-        console.error('Error adding to history:', historyError);
-        // Don't throw here as the main update succeeded
-      }
+    const updatedSettings = { ...settings, ...newSettings };
+    setSettings(updatedSettings);
 
-      return { settingId, newValue };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['app-settings'] });
-      queryClient.invalidateQueries({ queryKey: ['referral-commission-rate'] });
-      queryClient.invalidateQueries({ queryKey: ['settings-history'] });
-    },
-  });
-};
+    try {
+      const settingsRef = doc(db, 'user_settings', user.uid);
+      await setDoc(settingsRef, updatedSettings, { merge: true });
+    } catch (error) {
+      console.error('Error updating user settings:', error);
+    }
+  };
 
-export const useSettingsHistory = (settingId?: string) => {
-  return useQuery({
-    queryKey: ['settings-history', settingId],
-    queryFn: async (): Promise<SettingsHistory[]> => {
-      let query = supabase
-        .from('settings_history')
-        .select('*')
-        .order('changed_at', { ascending: false });
-
-      if (settingId) {
-        query = query.eq('setting_id', settingId);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('Error fetching settings history:', error);
-        throw error;
-      }
-
-      return data || [];
-    },
-  });
+  return {
+    settings,
+    updateSettings,
+    loading,
+  };
 };
