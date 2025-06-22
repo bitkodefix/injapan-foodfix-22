@@ -3,30 +3,22 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
+import { getAllProducts } from '@/services/productService';
 
-const SupabaseTest = () => {
+const FirebaseTest = () => {
   const [testResult, setTestResult] = useState<string>('');
   const { user } = useAuth();
 
-  const testSupabaseConnection = async () => {
+  const testFirebaseConnection = async () => {
     try {
-      setTestResult('Testing Supabase connection...');
+      setTestResult('Testing Firebase connection...');
       
       // Test basic connection by fetching products
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name')
-        .limit(1);
+      const products = await getAllProducts();
       
-      if (error) {
-        setTestResult(`❌ Connection failed: ${error.message}`);
-        return;
-      }
-      
-      setTestResult('✅ Supabase connection successful!');
+      setTestResult(`✅ Firebase connection successful! Found ${products.length} products`);
     } catch (error) {
-      console.error('Supabase test error:', error);
+      console.error('Firebase test error:', error);
       setTestResult(`❌ Test failed: ${error}`);
     }
   };
@@ -34,9 +26,9 @@ const SupabaseTest = () => {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle>Supabase Connection Test</CardTitle>
+        <CardTitle>Firebase Connection Test</CardTitle>
         <CardDescription>
-          Test the connection to Supabase database
+          Test the connection to Firebase database
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -48,7 +40,7 @@ const SupabaseTest = () => {
           </div>
         )}
         
-        <Button onClick={testSupabaseConnection} className="w-full">
+        <Button onClick={testFirebaseConnection} className="w-full">
           Test Connection
         </Button>
         
@@ -62,4 +54,4 @@ const SupabaseTest = () => {
   );
 };
 
-export default SupabaseTest;
+export default FirebaseTest;

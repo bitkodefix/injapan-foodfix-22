@@ -1,137 +1,103 @@
 
 import { useState, useEffect, createContext, useContext } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { 
+  User,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  updateProfile
+} from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/config/firebase';
 
 interface AuthContextType {
   user: User | null;
-  session: Session | null;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   loading: boolean;
+  userProfile: any;
 }
-
-// Helper function untuk membersihkan auth state
-const cleanupAuthState = () => {
-  // Remove standard auth tokens
-  localStorage.removeItem('supabase.auth.token');
-  // Remove all Supabase auth keys from localStorage
-  Object.keys(localStorage).forEach((key) => {
-    if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
-      localStorage.removeItem(key);
-    }
-  });
-  // Remove from sessionStorage if in use
-  Object.keys(sessionStorage || {}).forEach((key) => {
-    if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
-      sessionStorage.removeItem(key);
-    }
-  });
-};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email);
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('Auth state changed:', user?.email);
+      setUser(user);
+      
+      if (user) {
+        // Fetch user profile from Firestore
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            setUserProfile(userDoc.data());
+          }
+        } catch (error) {
+          console.error('Error fetching user profile:', error);
+        }
+      } else {
+        setUserProfile(null);
       }
-    );
-
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string) => {
     try {
-      // Clean up existing state
-      cleanupAuthState();
-      // Attempt global sign out
-      try {
-        await supabase.auth.signOut({ scope: 'global' });
-      } catch (err) {
-        // Continue even if this fails
-        console.log('Sign out cleanup error:', err);
-      }
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        console.log('Sign in error:', error);
-        return { error };
-      }
-
-      if (data.user) {
-        // Force page reload for clean state
-        window.location.href = '/';
-      }
-
+      console.log('Attempting Firebase sign in with email:', email);
+      await signInWithEmailAndPassword(auth, email, password);
       return { error: null };
-    } catch (error) {
-      console.log('Sign in catch error:', error);
+    } catch (error: any) {
+      console.error('Firebase sign in error:', error);
       return { error };
     }
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      // Clean up existing state first
-      cleanupAuthState();
+      console.log('Attempting Firebase sign up with email:', email);
+      const { user } = await createUserWithEmailAndPassword(auth, email, password);
       
-      const redirectUrl = `${window.location.origin}/`;
-      
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: {
-            full_name: fullName,
-          }
-        }
+      // Update user profile
+      await updateProfile(user, {
+        displayName: fullName
       });
-      return { error };
-    } catch (error) {
-      console.log('Sign up error:', error);
+
+      // Create user document in Firestore
+      await setDoc(doc(db, 'users', user.uid), {
+        full_name: fullName,
+        email: email,
+        role: 'user',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+      
+      console.log('Sign up successful and profile created:', user.email);
+      return { error: null };
+    } catch (error: any) {
+      console.error('Firebase sign up error:', error);
       return { error };
     }
   };
 
   const signOut = async () => {
     try {
-      // Clean up auth state
-      cleanupAuthState();
-      // Attempt global sign out
-      try {
-        await supabase.auth.signOut({ scope: 'global' });
-      } catch (err) {
-        // Ignore errors
-        console.log('Sign out error:', err);
-      }
-      // Force page reload for clean state
+      console.log('Attempting Firebase sign out');
+      await firebaseSignOut(auth);
+      console.log('Sign out successful');
       window.location.href = '/auth';
     } catch (error) {
-      console.log('Sign out catch error:', error);
-      // Force redirect even if sign out fails
+      console.error('Firebase sign out error:', error);
       window.location.href = '/auth';
     }
   };
@@ -139,11 +105,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   return (
     <AuthContext.Provider value={{
       user,
-      session,
       signIn,
       signUp,
       signOut,
-      loading
+      loading,
+      userProfile
     }}>
       {children}
     </AuthContext.Provider>
